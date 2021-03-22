@@ -1,0 +1,14 @@
+version: "3.8"
+services:
+  file_stat_exporter:
+    build: .
+    volumes:
+       - ./:/test
+    restart: always
+    environment:
+      PUSHGATEWAY_URL: http://pushgateway/
+      TLS_SKIP_VERIFY: 1
+      #
+      DIR1_PATH: /test
+      DIR1_LABEL: test-stat
+      DIR1_EXT: go

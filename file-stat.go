@@ -1,24 +1,25 @@
 package main
 
 import (
-	log "github.com/sirupsen/logrus"
 	"crypto/tls"
 	"flag"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
+	log "github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
 )
 
 var (
-	pushgateway  string
-	pushinterval time.Duration
-	start        time.Time
+	pushgateway        string
+	pushinterval       time.Duration
+	start              time.Time
 	InsecureSkipVerify bool
+	// completionSize *prometheus.CounterVec
 )
 
 func init() {
@@ -117,24 +118,26 @@ func push_metrics(files *[]os.FileInfo, label string) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: InsecureSkipVerify},
 	}
-	// client := &http.Client{Transport: tr}
-
-	completionSize := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "file_stat_size_bytes",
-		Help: "The size of file in a specific directory with additional information in labels",
-	})
+	completionSize := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "file_stat_size_bytes",
+			Help: "The size of file in a specific directory with additional information in labels",
+		},
+		[]string{"modtime"},
+	)
 	for _, file := range *files {
 
-		completionSize.Set(float64(file.Size()))
+		completionSize.With(prometheus.Labels{"modtime": file.ModTime().String()}).Add(float64(file.Size()))
+
 		if err := push.New(pushgateway, "file_stat").
 			Collector(completionSize).
 			Grouping("dir_label", label).
 			Grouping("name", file.Name()).
-			Grouping("modtime", file.ModTime().String()).
 			Client(&http.Client{Transport: tr}).
 			Push(); err != nil {
 			log.Error("Could not push completion time to Pushgateway:", err)
 		}
+		completionSize.Delete(prometheus.Labels{"modtime": file.ModTime().String()})
 
 	}
 	log.Info("Done, took: " + time.Since(start).String())
@@ -144,6 +147,7 @@ func main() {
 
 	flag.Parse()
 	if *boolPtr {
+
 		for {
 
 			read_config()
